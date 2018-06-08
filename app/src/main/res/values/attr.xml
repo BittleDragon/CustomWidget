@@ -4,5 +4,7 @@
     <declare-styleable name="RoundRectProgressbar">
         <attr name="progress_unreached_color" format="color" />
         <attr name="progress_reached_color" format="color" />
+        <attr name="progress_percent_color" format="color" />
+        <attr name="progress_percent_textSize" format="dimension"/>
     </declare-styleable>
 </resources>

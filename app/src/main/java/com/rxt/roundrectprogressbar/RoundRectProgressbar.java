@@ -13,6 +13,8 @@ import android.util.Log;
 import android.util.TypedValue;
 import android.widget.ProgressBar;
 
+import java.math.BigDecimal;
+
 
 /**
  * Desc: 圆角矩形进度条
@@ -26,7 +28,42 @@ import android.widget.ProgressBar;
 public class RoundRectProgressbar extends ProgressBar {
 
     public static final String TAG = "Progressbar";
-
+    /**
+     * 默认进度颜色
+     */
+    public static final String DEFAULT_PROGRESS_COLOR = "#ffca61";
+    /**
+     * 默认进度条背景颜色
+     */
+    public static final String DEFAULT_BACKGROUND_COLOR = "#fff3e1";
+    /**
+     * 默认百分比字体颜色
+     */
+    public static final String DEFAULT_PERCENT_COLOR = "#333333";
+    /**
+     * 默认百分比字体大小
+     */
+    public static final float DEFAULT_PERCENT_TEXTSIZE = 14f;
+    /**
+     * 默认圆角半径
+     */
+    private static final int DEFAULT_RECT_RADIUS = 10;
+    /**
+     * 当前进度的颜色
+     */
+    public int currentProgressColor;
+    /**
+     * 进度背景颜色
+     */
+    public int progressBgColor;
+    /**
+     * 当前百分比字体颜色
+     */
+    public int currentPercentColor;
+    /**
+     * 当前百分比字体大小
+     */
+    public float currentPercentTextSize;
     /**
      * 进度条背景画笔
      */
@@ -40,6 +77,10 @@ public class RoundRectProgressbar extends ProgressBar {
      */
     private Paint progressPaint;
     /**
+     * 进度百分比画笔
+     */
+    private Paint percentPaint;
+    /**
      * 进度条背景矩形, 当前进度矩形
      */
     private RectF fullSizeProgressbarRectf, progressRectf;
@@ -47,22 +88,6 @@ public class RoundRectProgressbar extends ProgressBar {
      * 进度条矩形圆角半径（进度条高度的一半）
      */
     private float rectRadius;
-    /**
-     * 默认圆角半径
-     */
-    private static final int DEFAULT_RECT_RADIUS = 10;
-    /**
-     * 默认进度颜色
-     */
-    public static final String DEFAULT_PROGRESS_COLOR = "#ffca61";
-    /**
-     * 默认进度条背景颜色
-     */
-    public static final String DEFAULT_BACKGROUND_COLOR = "#fff3e1";
-
-    public int currentProgressColor;
-    public int progressBgColor;
-
     private Path path;
     private float[] radii;
 
@@ -78,12 +103,17 @@ public class RoundRectProgressbar extends ProgressBar {
         super(context, attrs, defStyleAttr);
 
         TypedArray typedArray = getContext().obtainStyledAttributes(attrs, R.styleable.RoundRectProgressbar);
-        //灰色
+        //进度条背景颜色
         progressBgColor = typedArray.getColor(R.styleable.
                 RoundRectProgressbar_progress_unreached_color, Color.parseColor(DEFAULT_BACKGROUND_COLOR));
-        //黄色
+        //当前进度颜色
         currentProgressColor = typedArray.getColor(R.styleable.
                 RoundRectProgressbar_progress_reached_color, Color.parseColor(DEFAULT_PROGRESS_COLOR));
+        currentPercentColor = typedArray.getColor(R.styleable.RoundRectProgressbar_progress_percent_color,
+                Color.parseColor(DEFAULT_PERCENT_COLOR));
+        float defaultTextSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, DEFAULT_PERCENT_TEXTSIZE,
+                context.getResources().getDisplayMetrics());
+        typedArray.getDimension(R.styleable.RoundRectProgressbar_progress_percent_textSize, defaultTextSize);
         typedArray.recycle();
 
         initPaint();
@@ -95,6 +125,7 @@ public class RoundRectProgressbar extends ProgressBar {
                 getResources().getDisplayMetrics());
 
         path = new Path();
+
     }
 
     private void initPaint() {
@@ -112,6 +143,10 @@ public class RoundRectProgressbar extends ProgressBar {
         progressPaint = new Paint();
         progressPaint.setColor(currentProgressColor);
         progressPaint.setAntiAlias(true);
+
+        percentPaint = new Paint();
+        percentPaint.setColor(currentPercentColor);
+        percentPaint.setTextSize(currentPercentTextSize);
     }
 
     @Override
@@ -133,6 +168,20 @@ public class RoundRectProgressbar extends ProgressBar {
         super.onSizeChanged(w, h, oldw, oldh);
         //左上，左下圆角
         radii = new float[]{rectRadius, rectRadius, 0f, 0f, 0f, 0f, rectRadius, rectRadius};
+
+        correctPercentTextSize(h);
+    }
+
+    /**
+     * 百分比字体大小校正
+     * @param h 进度条高度
+     */
+    private void correctPercentTextSize(int h) {
+        float textHeight = percentPaint.descent() - percentPaint.ascent();
+        if (textHeight > h) {
+            percentPaint.setTextSize(percentPaint.getTextSize() - 1);
+            correctPercentTextSize(h);
+        }
     }
 
     @Override
@@ -142,14 +191,37 @@ public class RoundRectProgressbar extends ProgressBar {
         canvas.save();
         //平移到paddingLeft的地方再开始绘制
         canvas.translate(getPaddingLeft(), 0);
-		
-		//绘制进度条背景
+
+        //绘制进度条背景
         canvas.drawRoundRect(fullSizeProgressbarRectf, rectRadius, rectRadius, bgPaint);
 
         //绘制边框线
         fullSizeProgressbarRectf.set(0, 0, progressbarWidth, rectRadius * 2);
         canvas.drawRoundRect(fullSizeProgressbarRectf, rectRadius, rectRadius, strokePaint);
 
+        drawProgress(progressbarWidth);
+
+        //绘制进度条中间的百分比数值
+        float rate = getProgress() * 1f / getMax() * 100;
+        double roundedRate = new BigDecimal(rate).setScale(1, BigDecimal.ROUND_HALF_UP).doubleValue();
+        String percent = roundedRate + "%";
+        float textWidth = percentPaint.measureText(percent);
+        float x = (progressbarWidth - textWidth) / 2;
+        float textHeight = percentPaint.descent() - percentPaint.ascent();
+        float y = rectRadius - textHeight / 2;
+        canvas.drawText(percent, x, y, percentPaint);
+
+        canvas.drawPath(path, progressPaint);
+        //用来恢复Canvas之前保存的状态
+        canvas.restore();
+
+    }
+
+    /**
+     * 绘制进度
+     * @param progressbarWidth 进度条总宽度
+     */
+    private void drawProgress(int progressbarWidth) {
         //绘制当前进度
         float currentProgressWidth = progressbarWidth * getProgress() * 1f / getMax();
         path.reset();
@@ -186,11 +258,6 @@ public class RoundRectProgressbar extends ProgressBar {
             progressRectf.set(0, 0, currentProgressWidth, rectRadius * 2);
             path.addRoundRect(progressRectf, radii, Path.Direction.CW);
         }
-
-        canvas.drawPath(path, progressPaint);
-        //用来恢复Canvas之前保存的状态
-        canvas.restore();
-
     }
 
     public void setCurrentProgressColor(@ColorInt int currentProgressColor) {
